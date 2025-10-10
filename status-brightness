@@ -1,0 +1,46 @@
+#!/bin/bash
+
+SCT_TEMP=4000         # temperature for night mode
+SCT_STATE_FILE="/tmp/sct_state"  # file to store current state
+
+print_brightness(){
+ # Get current brightness
+    BRIGHTNESS=$(brightnessctl get)
+    MAX=$(brightnessctl max)
+    PERCENT=$((BRIGHTNESS * 100 / MAX))
+
+# Icon depending on brightness level
+    if [ "$PERCENT" -le 25 ]; then
+        ICON="󰃞"
+    elif [ "$PERCENT" -le 50 ]; then
+        ICON="󰃝"
+    elif [ "$PERCENT" -le 75 ]; then
+        ICON="󰃟"
+    else
+        ICON="󰃠"
+    fi
+    echo "$ICON ${PERCENT}%"
+}
+
+toggle_sct() {
+    if [ -f "$SCT_STATE_FILE" ]; then
+        sct 6500
+        rm -f "$SCT_STATE_FILE"
+        notify-send "Night mode: OFF"
+    else
+        sct "$SCT_TEMP"
+        touch "$SCT_STATE_FILE"
+        notify-send "Night mode: ON ($SCT_TEMP K)"
+    fi
+}
+
+case "$BLOCK_BUTTON" in 
+    1) toggle_sct ;;        # toggle night mode
+    2) brightnessctl set 1% ;; # default
+    4) brightnessctl set +5% ;;
+    5) brightnessctl set 5%- ;;
+#    3) notify-send "Brightness: $(brightnessctl get) / $(brightnessctl max)" ;;
+esac
+
+#pkill -RTMIN+5 dwmblocks
+print_brightness

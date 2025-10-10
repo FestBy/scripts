@@ -1,0 +1,35 @@
+#!/bin/sh
+
+BAT=$(ls /sys/class/power_supply/ | grep BAT)
+BAT_PATH="/sys/class/power_supply/$BAT"
+CAP=$(cat "$BAT_PATH/capacity")
+STATUS=$(cat "$BAT_PATH/status")
+
+# Battery icon by charge level
+if [ "$STATUS" = "Charging" ] || [ "$STATUS" = "Full" ] || [ "$STATUS" = "Not charging" ]; then
+    ICON="󰂄" # <-- ICON_CHARGING
+elif [ "$CAP" -ge 100 ]; then
+    ICON="󰁹" # <-- ICON_FULL
+elif [ "$CAP" -ge 90 ]; then
+    ICON="󰂂" # <-- ICON_BAT_90
+elif [ "$CAP" -ge 80 ]; then
+    ICON="󰂁" # <-- ICON_BAT_80
+elif [ "$CAP" -ge 70 ]; then
+    ICON="󰂀" # <-- ICON_BAT_70
+elif [ "$CAP" -ge 60 ]; then
+    ICON="󰁿" # <-- ICON_BAT_60
+elif [ "$CAP" -ge 50 ]; then
+    ICON="󰁾" # <-- ICON_BAT_50
+elif [ "$CAP" -ge 40 ]; then
+    ICON="󰁽" # <-- ICON_BAT_40
+elif [ "$CAP" -ge 30 ]; then
+    ICON="󰁼" # <-- ICON_BAT_30
+elif [ "$CAP" -ge 20 ]; then
+    ICON="󰁻" # <-- ICON_BAT_20
+elif [ "$CAP" -ge 10 ]; then
+    ICON="󰁺" # <-- ICON_BAT_10
+else
+    ICON="󰂎" # <-- ICON_EMPTY (very low)
+fi
+
+echo "$ICON $CAP%"

@@ -1,0 +1,12 @@
+#!/bin/sh
+
+layouts=(EN UK RU)
+STATEFILE="/tmp/kblayout_state"
+
+if [ ! -f "$STATEFILE" ]; then
+  echo "EN"
+  exit
+fi
+
+current=$(cat "$STATEFILE")
+echo "${layouts[$current]}"

@@ -1,0 +1,69 @@
+#!/bin/sh
+
+#LOCATION="LAT,LON"
+
+API_KEY="___API___"
+LAT="___LAT___"
+LON="__LON___"
+UNITS="metric"
+LANG="en"
+URL="https://api.openweathermap.org/data/2.5/weather?lat=$LAT&lon=$LON&appid=$API_KEY&units=$UNITS&lang=$LANG"
+
+#CITY="___CITY___"
+#URL="https://api.openweathermap.org/data/2.5/weather?q=$CITY&appid=$API_KEY&units=$UNITS&lang=$LANG"
+
+get_icon() {
+  case "$1" in
+    "Thunderstorm") echo "" ;;
+    "Drizzle")      echo "" ;;
+    "Rain")         echo "" ;;
+    "Snow")         echo "" ;;
+    "Clear")        echo "" ;;
+    "Clouds")       echo "" ;;
+    "Mist"|"Fog")   echo "" ;;
+    *)              echo "" ;;
+  esac
+}
+
+get_weather_data() {
+  curl -sf "$URL"
+}
+
+parse_and_print() {
+    local data
+    data=$(get_weather_data) || return
+
+    local main desc icon temp feels pressure humidity wind pop visibility wind_deg sunrise sunset temp_min temp_max
+
+    main=$(echo "$data" | jq -r '.weather[0].main')
+    desc=$(echo "$data" | jq -r '.weather[0].description' | sed 's/^./\U&/') # capitalize first letter
+    icon=$(get_icon "$main")
+
+    temp=$(echo "$data" | jq '.main.temp' | xargs printf "%.0f")
+    feels=$(echo "$data" | jq '.main.feels_like' | xargs printf "%.0f")
+    pressure=$(echo "$data" | jq '.main.pressure')
+    humidity=$(echo "$data" | jq '.main.humidity')
+    wind=$(echo "$data" | jq '.wind.speed')
+    pop=$(echo "$data" | jq '.clouds.all') 
+    visibility=$(echo "$data" | jq '.visibility' | xargs printf "%.0f")
+    wind_deg=$(echo "$data" | jq '.wind.deg')
+    sunrise=$(date -d @"$(echo "$data" | jq '.sys.sunrise')" +"%H:%M")
+    sunset=$(date -d @"$(echo "$data" | jq '.sys.sunset')" +"%H:%M")
+    temp_min=$(echo "$data" | jq '.main.temp_min' | xargs printf "%.0f")
+    temp_max=$(echo "$data" | jq '.main.temp_max' | xargs printf "%.0f")
+
+# Output for dwmblocks
+echo "$icon ${temp}°C"
+
+# On right click, show notify
+case $BLOCK_BUTTON in
+    1) firefox https://the_website_where_you_check_the_weather & ;;
+    3)
+notify-send -t 10000 -h string:bgcolor:"$COLOR" "Weather: $desc" \
+    "Location: ${CITY} (${lat}, ${lon})\n\nTemperature: ${temp}°C (Feels like: ${feels}°C)\n\nRange: ${temp_min}°C — ${temp_max}°C\n\nPressure: $((pressure * 750064 / 100000)) mmHg\n\nHumidity: ${humidity}%\n\nWind: ${wind} m/s, ${wind_deg}°\n\nCloudiness: ${cloud}%\n\nVisibility: ${visibility} m\n\nSunrise: ${sunrise}\n\nSunset: ${sunset}"
+    ;;
+esac
+}
+
+parse_and_print
+

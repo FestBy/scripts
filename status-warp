@@ -1,0 +1,32 @@
+#!/bin/bash
+
+get_warp_status() {
+    if warp-cli status | grep -q "Connected"; then
+        echo "on"
+    else
+        echo "off"
+    fi
+}
+
+print_warp() {
+    if [ "$(get_warp_status)" = "on" ]; then
+        ICON=""
+  #      TEXT="VPN On"
+    else
+        ICON=""
+  #      TEXT="VPN Off"
+    fi
+    echo "$ICON$TEXT"
+}
+
+case "$BLOCK_BUTTON" in
+    1) # left click -> toggle
+        if [ "$(get_warp_status)" = "on" ]; then
+            warp-cli disconnect && notify-send "WARP-cli" "Disconnected"
+        else
+            warp-cli connect && notify-send "WARP-cli" "Connected"
+        fi
+            ;;
+esac
+
+print_warp

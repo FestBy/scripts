@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+
+# Get the word: from an argument or from primary selection (highlight with mouse) 
+word=${1:-$(xclip -o -selection primary 2>/dev/null || wl-paste 2>/dev/null)}
+
+# Checking for empty words or incorrect characters
+[[ -z "$word" || "$word" =~ [\/] ]] && notify-send -h string:bgcolor:#bf616a -t 3000 "Invalid input." && exit 0
+
+# Translation via local translate-shell
+# :uk mean ukrainian translate
+translation=$(trans -b :uk "$word" 2>/dev/null)
+
+# Checking the result
+[[ -z "$translation" ]] && notify-send -h string:bgcolor:#bf616a -t 3000 "Translation not found." && exit 0
+
+# Requires a notification daemon to be installed
+notify-send -t 10000 "$word -" "$translation"
+

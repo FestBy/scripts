@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+
+# dmenu calculator for series watching time
+
+ALS=$(echo "" | dmenu -p "Average length of episode (min):")
+[ -z "$ALS" ] && exit
+
+NE=$(echo "" | dmenu -p "Number of episodes:")
+[ -z "$NE" ] && exit
+
+multiply=$((ALS * NE))
+hour=$((multiply / 60))
+min=$((multiply % 60))
+
+# Text for clipboard (for table)
+table="${ALS} хв (${hour} год ${min} хв)"
+
+# Copy to clipboard via your cliphist script
+printf "%s" "$table" | ~/scripts/dmenu_cliphist out
+
+# Show info
+notify-send "Series Time Calculator" "Hours: $hour\nMinutes: $min\n\nCopied: $table"

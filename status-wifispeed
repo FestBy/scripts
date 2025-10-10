@@ -1,0 +1,74 @@
+#!/bin/bash
+
+IFACE="wlan0"
+STATE="/tmp/net_speed_${IFACE}"
+PAUSE_FILE="/tmp/net_speed_pause"
+
+# Checking whether there was a left mouse click
+if [ "$BLOCK_BUTTON" == "1" ]; then
+    if [ -f $PAUSE_FILE ]; then
+        rm $PAUSE_FILE
+    else
+        touch $PAUSE_FILE
+    fi
+fi
+
+# If paused, just read the previous value
+if [ -f $PAUSE_FILE ]; then
+    if [ -f $STATE ]; then
+        read RX_PREV TX_PREV TIME_PREV < $STATE
+    else
+        RX_PREV=0
+        TX_PREV=0
+        TIME_PREV=$(date +%s)
+    fi
+    echo "󰓅 –PAUSE–"
+    exit
+fi
+
+# Reading current bytes
+RX=$(cat /sys/class/net/$IFACE/statistics/rx_bytes)
+TX=$(cat /sys/class/net/$IFACE/statistics/tx_bytes)
+
+# If there is no state yet, create it
+if [ ! -f $STATE ]; then
+    echo "$RX $TX $(date +%s)" > $STATE
+    echo "󰓅 0K↓ 0K↑"
+    exit
+fi
+
+# Reading previous values
+read RX_PREV TX_PREV TIME_PREV < $STATE
+
+# Current time
+TIME_NOW=$(date +%s)
+DELTA_T=$((TIME_NOW - TIME_PREV))
+[ $DELTA_T -eq 0 ] && DELTA_T=1
+
+# Bytes difference
+RX_DIFF=$((RX - RX_PREV))
+TX_DIFF=$((TX - TX_PREV))
+
+# Speed in bite/s
+RX_RATE=$((RX_DIFF / DELTA_T))
+TX_RATE=$((TX_DIFF / DELTA_T))
+
+# Update state
+echo "$RX $TX $TIME_NOW" > $STATE
+
+# Formatting
+format_rate() {
+    local RATE=$1
+    if [ $RATE -ge 1048576 ]; then
+        echo "$((RATE / 1048576))M"
+    elif [ $RATE -ge 1024 ]; then
+        echo "$((RATE / 1024))K"
+    else
+        echo "${RATE}B"
+    fi
+}
+
+RX_HUMAN=$(format_rate $RX_RATE)
+TX_HUMAN=$(format_rate $TX_RATE)
+
+echo "󰓅 ${RX_HUMAN}↓ ${TX_HUMAN}↑"

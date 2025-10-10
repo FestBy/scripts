@@ -1,0 +1,8 @@
+#!/bin/sh
+
+date '+%A, %B %e %l:%M%p'
+
+case $BLOCK_BUTTON in
+    1) setsid st -e calcure & ;; 
+esac
+

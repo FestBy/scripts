@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+
+# Mount menu for Windows, USB, Android, CD/DVD
+# Requires: dmenu, lsblk, blkid, jmtpfs, sudo
+
+MOUNT_BASE="/mnt"
+
+# Get list of drives
+drives_list() {
+
+lsblk -rpo NAME,FSTYPE,SIZE,MOUNTPOINT | while read -r dev fs size mnt; do
+    [[ -z $dev || $dev == "NAME" ]] && continue
+    [[ "$fs" == "swap" ]] && continue
+    [[ "$dev" == "/dev/nvme0n1p1" ]] && continue
+    [[ "$dev" == "/dev/nvme0n1p6" || "$dev" == "/dev/nvme0n1p8" ]] && continue
+    [[ ! "$fs" =~ ^(ntfs|vfat|exfat|ext4|btrfs)$ ]] && continue
+
+    label=$(blkid -o value -s LABEL "$dev" 2>/dev/null)
+    [[ -z $label ]] && label="NoLabel"
+    [[ -n $mnt ]] && status="[mounted]" || status="[unmounted]"
+    echo "$dev ($fs $label $size) $status"
+done
+
+    # Android MTP
+    ANDROID_DIR="$HOME/android"
+    mkdir -p "$ANDROID_DIR"
+    if mountpoint -q "$ANDROID_DIR"; then
+        model=$(jmtpfs -l 2>/dev/null | sed -n 's/.*: //p')
+        [[ -n $model ]] && status="[mounted: $model]" || status="[mounted]"
+    else
+        status="[unmounted]"
+    fi
+    echo "Android phone $status"
+
+    # CD/DVD drive
+    if [[ -e /dev/sr0 ]]; then
+        if mountpoint -q "$MOUNT_BASE/cdrom"; then
+            status="[mounted]"
+        else
+            status="[unmounted]"
+        fi
+        echo "CD/DVD drive $status"
+    fi
+}
+
+# Menu
+choice=$(drives_list | sort | dmenu -l 10 -p "Mount:")
+[[ -z $choice ]] && exit 0
+
+# Android handling
+if [[ "$choice" == Android* ]]; then
+    ANDROID_DIR="$HOME/android"
+    mkdir -p "$ANDROID_DIR"
+
+    if mountpoint -q "$ANDROID_DIR"; then
+        fusermount -u "$ANDROID_DIR" && notify-send "Android phone unmounted"
+    else
+        model=$(jmtpfs -l 2>/dev/null | sed -n 's/.*: //p')
+        if jmtpfs "$ANDROID_DIR"; then
+            notify-send "Android phone mounted at $ANDROID_DIR" "$model"
+        else
+            notify-send "Error: could not mount Android phone"
+        fi
+    fi
+    exit 0
+fi
+
+# CD/DVD handling
+if [[ "$choice" == CD/DVD* ]]; then
+    target="$MOUNT_BASE/cdrom"
+    sudo mkdir -p "$target"
+
+    if mountpoint -q "$target"; then
+        sudo umount /dev/sr0 && notify-send "CD/DVD unmounted from $target"
+    else
+        if sudo mount /dev/sr0 "$target"; then
+            notify-send "CD/DVD mounted at $target"
+        else
+            notify-send "Error: could not mount CD/DVD"
+        fi
+    fi
+    exit 0
+fi
+
+# Device mount/unmount (USB, Windows, etc.)
+dev=$(echo "$choice" | awk '{print $1}')
+mnt=$(lsblk -n -o MOUNTPOINT "$dev")
+
+if [[ -n $mnt ]]; then
+    sudo umount "$dev" && notify-send "$dev unmounted from $mnt"
+else
+    label=$(blkid -o value -s LABEL "$dev" 2>/dev/null)
+    [[ -z $label ]] && label=$(basename "$dev")
+    target="$MOUNT_BASE/$label"
+    sudo mkdir -p "$target"
+    if sudo mount "$dev" "$target"; then
+        notify-send "$dev mounted at $target"
+    else
+        notify-send "Error: could not mount $dev"
+    fi
+fi
+

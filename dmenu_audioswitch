@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+
+# Get sinks list (name and index)
+mapfile -t sinks < <(pactl list short sinks | awk '{print $2}')
+
+# If there are no sinks — exit
+[ ${#sinks[@]} -eq 0 ] && { notify-send "No sinks found"; exit 1; }
+
+# Selecting sink via dmenu
+choice=$(printf '%s\n' "${sinks[@]}" | dmenu -c -l 10 -i -p "Choose output:")
+
+# If the selection is empty — exit
+[ -z "$choice" ] && exit 0
+
+# Set the selected sink as default
+pactl set-default-sink "$choice"
+
+notify-send -h string:bgcolor:#a3be8c "Audio switched to $choice!"
