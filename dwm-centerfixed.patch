@@ -1,0 +1,48 @@
+diff --git a/config.h b/config.h
+index 1111111..2222222 100644
+--- a/config.h
++++ b/config.h
+@@ -150,6 +150,7 @@ static Button buttons[] = {
+     { ClkClientWin,   MODKEY, Button1, movemouse,   {0} },
+     { ClkClientWin,   MODKEY, Button3, resizemouse, {0} },
+     { ClkTagBar,      0,      Button1, view,        {0} },
++    { ClkClientWin,   MODKEY, Button2, centerfixed, {0} },
+     { ClkTagBar,      0,      Button3, toggleview,  {0} },
+     { ClkTagBar,      MODKEY, Button1, tag,         {0} },
+     { ClkTagBar,      MODKEY, Button3, toggletag,   {0} },
+diff --git a/dwm.c b/dwm.c
+index 3333333..4444444 100644
+--- a/dwm.c
++++ b/dwm.c
+@@ -1856,6 +1856,34 @@ zoom(const Arg *arg)
+     pop(c);
+ }
+
++void
++centerfixed(const Arg *arg) {
++    if (!selmon->sel)
++        return;
++
++    Client *c = selmon->sel;
++
++    /* force tiled */
++    if (c->isfloating)
++        togglefloating(NULL); // make it tiled if floating
++
++    /* restore base size */
++    int w = (c->basew > 0) ? c->basew : c->w;
++    int h = (c->baseh > 0) ? c->baseh : c->h;
++
++    /* center */
++    c->x = selmon->wx + (selmon->ww - w) / 2;
++    c->y = selmon->wy + (selmon->wh - h) / 2;
++    c->w = w;
++    c->h = h;
++
++    resize(c, c->x, c->y, c->w, c->h, 0);
++    arrange(c->mon);
++}
++
+ /* Rest of dwm.c */
++
++
