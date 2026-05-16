@@ -1,26 +1,22 @@
 #!/usr/bin/env bash
-
 # Mount menu for Windows, USB, Android, CD/DVD
-# Requires: dmenu, lsblk, blkid, jmtpfs, sudo
-
+# Requires: dmenu, lsblk, blkid, jmtpfs, sudo, udisks2
 MOUNT_BASE="/mnt"
-
+ 
 # Get list of drives
 drives_list() {
-
-lsblk -rpo NAME,FSTYPE,SIZE,MOUNTPOINT | while read -r dev fs size mnt; do
-    [[ -z $dev || $dev == "NAME" ]] && continue
-    [[ "$fs" == "swap" ]] && continue
-    [[ "$dev" == "/dev/nvme0n1p1" ]] && continue
-    [[ "$dev" == "/dev/nvme0n1p6" || "$dev" == "/dev/nvme0n1p8" ]] && continue
-    [[ ! "$fs" =~ ^(ntfs|vfat|exfat|ext4|btrfs)$ ]] && continue
-
-    label=$(blkid -o value -s LABEL "$dev" 2>/dev/null)
-    [[ -z $label ]] && label="NoLabel"
-    [[ -n $mnt ]] && status="[mounted]" || status="[unmounted]"
-    echo "$dev ($fs $label $size) $status"
-done
-
+    lsblk -rpo NAME,FSTYPE,SIZE,MOUNTPOINT | while read -r dev fs size mnt; do
+        [[ -z $dev || $dev == "NAME" ]] && continue
+        [[ "$fs" == "swap" ]] && continue
+        [[ "$dev" == "/dev/nvme0n1p1" ]] && continue
+        [[ "$dev" == "/dev/nvme0n1p6" || "$dev" == "/dev/nvme0n1p8" ]] && continue
+        [[ ! "$fs" =~ ^(ntfs|vfat|exfat|ext4|btrfs)$ ]] && continue
+        label=$(blkid -o value -s LABEL "$dev" 2>/dev/null)
+        [[ -z $label ]] && label="NoLabel"
+        [[ -n $mnt ]] && status="[mounted]" || status="[unmounted]"
+        echo "$dev ($fs $label $size) $status"
+    done
+ 
     # Android MTP
     ANDROID_DIR="$HOME/android"
     mkdir -p "$ANDROID_DIR"
@@ -31,7 +27,7 @@ done
         status="[unmounted]"
     fi
     echo "Android phone $status"
-
+ 
     # CD/DVD drive
     if [[ -e /dev/sr0 ]]; then
         if mountpoint -q "$MOUNT_BASE/cdrom"; then
@@ -41,17 +37,19 @@ done
         fi
         echo "CD/DVD drive $status"
     fi
+ 
+    # USB power-off — safely remove USB device from bus
+    echo "USB power-off [safe eject]"
 }
-
+ 
 # Menu
 choice=$(drives_list | sort | dmenu -l 10 -p "Mount:")
 [[ -z $choice ]] && exit 0
-
+ 
 # Android handling
 if [[ "$choice" == Android* ]]; then
     ANDROID_DIR="$HOME/android"
     mkdir -p "$ANDROID_DIR"
-
     if mountpoint -q "$ANDROID_DIR"; then
         fusermount -u "$ANDROID_DIR" && notify-send "Android phone unmounted"
     else
@@ -64,12 +62,11 @@ if [[ "$choice" == Android* ]]; then
     fi
     exit 0
 fi
-
+ 
 # CD/DVD handling
 if [[ "$choice" == CD/DVD* ]]; then
     target="$MOUNT_BASE/cdrom"
     sudo mkdir -p "$target"
-
     if mountpoint -q "$target"; then
         sudo umount /dev/sr0 && notify-send "CD/DVD unmounted from $target"
     else
@@ -81,11 +78,85 @@ if [[ "$choice" == CD/DVD* ]]; then
     fi
     exit 0
 fi
-
+ 
+# USB power-off handling
+if [[ "$choice" == "USB power-off"* ]]; then
+    # Collect list of USB block devices (sdX — not nvme, not sr)
+    usb_devices=()
+    while IFS= read -r line; do
+        usb_devices+=("$line")
+    done < <(lsblk -rpo NAME,TRAN,FSTYPE,SIZE,MOUNTPOINT | awk '$2=="usb"' | while read -r dev tran fs size mnt; do
+        [[ "$fs" == "swap" || -z "$fs" ]] && continue
+        label=$(blkid -o value -s LABEL "$dev" 2>/dev/null)
+        [[ -z $label ]] && label="NoLabel"
+        [[ -n $mnt ]] && status="[mounted: $mnt]" || status="[unmounted]"
+        echo "$dev ($fs $label $size) $status"
+    done)
+ 
+    if [[ ${#usb_devices[@]} -eq 0 ]]; then
+        notify-send "USB power-off" "No USB devices found"
+        exit 0
+    fi
+ 
+    usb_choice=$(printf '%s\n' "${usb_devices[@]}" | dmenu -l 10 -p "Power-off USB:")
+    [[ -z $usb_choice ]] && exit 0
+ 
+    usb_dev=$(echo "$usb_choice" | awk '{print $1}')
+ 
+    # Find parent disk (e.g. /dev/sdb1 → /dev/sdb; /dev/sdb → /dev/sdb)
+    pkname=$(lsblk -no PKNAME "$usb_dev" 2>/dev/null | awk 'NF{print; exit}')
+    if [[ -n $pkname ]]; then
+        parent_dev="/dev/$pkname"
+    else
+        parent_dev="$usb_dev"
+    fi
+ 
+    # Auto-unmount all mounted partitions on this disk
+    mounted_parts=$(lsblk -rpo NAME,MOUNTPOINT "$parent_dev" 2>/dev/null | awk 'NR>1 && $2!="" {print $1}')
+    if [[ -n $mounted_parts ]]; then
+        notify-send "USB power-off" "Unmounting partitions..."
+        while IFS= read -r part; do
+            if ! sudo umount "$part"; then
+                notify-send "USB power-off" "Error: could not unmount $part (device busy?)"
+                exit 1
+            fi
+        done <<< "$mounted_parts"
+    fi
+ 
+    # Check dirty pages — make sure cache is flushed
+    notify-send "USB power-off" "Flushing cache, please wait..."
+    sync
+ 
+    # Wait until dirty pages drop to zero (max 10 seconds)
+    max_wait=20
+    elapsed=0
+    while true; do
+        dirty=$(awk '/^Dirty:/ {print $2}' /proc/meminfo)
+        [[ "$dirty" -eq 0 ]] && break
+        sleep 0.5
+        elapsed=$((elapsed + 1))
+        [[ $elapsed -ge $max_wait ]] && break
+    done
+ 
+    dirty=$(awk '/^Dirty:/ {print $2}' /proc/meminfo)
+    if [[ "$dirty" -gt 0 ]]; then
+        notify-send "USB power-off" "Warning: ${dirty} kB still dirty. Try again or wait."
+        exit 1
+    fi
+ 
+    # Power-off
+    if udisksctl power-off -b "$parent_dev"; then
+        notify-send "USB power-off" "$parent_dev safely removed from bus"
+    else
+        notify-send "USB power-off" "Error: could not power off $parent_dev"
+        exit 1
+    fi
+    exit 0
+fi
+ 
 # Device mount/unmount (USB, Windows, etc.)
 dev=$(echo "$choice" | awk '{print $1}')
 mnt=$(lsblk -n -o MOUNTPOINT "$dev")
-
 if [[ -n $mnt ]]; then
     sudo umount "$dev" && notify-send "$dev unmounted from $mnt"
 else
@@ -99,4 +170,3 @@ else
         notify-send "Error: could not mount $dev"
     fi
 fi
-
