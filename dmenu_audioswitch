@@ -1,18 +1,65 @@
 #!/usr/bin/env bash
-
-# Get sinks list (name and index)
-mapfile -t sinks < <(pactl list short sinks | awk '{print $2}')
-
-# If there are no sinks — exit
-[ ${#sinks[@]} -eq 0 ] && { notify-send "No sinks found"; exit 1; }
-
-# Selecting sink via dmenu
-choice=$(printf '%s\n' "${sinks[@]}" | dmenu -c -l 10 -i -p "Choose output:")
-
-# If the selection is empty — exit
+ 
+SINK_ANALOG="alsa_output.pci-0000_05_00.6.analog-stereo"
+SINK_HDMI="alsa_output.pci-0000_05_00.1.hdmi-stereo"
+SOURCE="alsa_input.pci-0000_05_00.6.analog-stereo"
+ 
+# Detect current sink and ports
+current_sink=$(pactl info | awk '/Default Sink:/{print $3}')
+current_sink_port=$(pactl list sinks | awk '
+    /Name:/{name=$2}
+    name=="'"$SINK_ANALOG"'" && /Active Port:/{print $3}
+')
+current_mic_port=$(pactl list sources | awk '
+    /Name:/{name=$2}
+    name=="'"$SOURCE"'" && /Active Port:/{print $3}
+')
+ 
+mark() { [ "$1" = "$2" ] && echo " ✓" || echo ""; }
+ 
+options=(
+    "🔉 Speakers (built-in)$(  mark "$current_sink/$current_sink_port" "$SINK_ANALOG/analog-output-speaker")"
+    "🎧 Headphones (analog)$(   mark "$current_sink/$current_sink_port" "$SINK_ANALOG/analog-output-headphones")"
+    "🖥️  HDMI$(                 mark "$current_sink" "$SINK_HDMI")"
+    "🎤 Mic: Internal$(         mark "$current_mic_port" "analog-input-internal-mic")"
+    "🎙️  Mic: Headset$(         mark "$current_mic_port" "analog-input-headset-mic")"
+)
+ 
+choice=$(printf '%s\n' "${options[@]}" | dmenu -c -l 10 -i -p "Audio:")
 [ -z "$choice" ] && exit 0
-
-# Set the selected sink as default
-pactl set-default-sink "$choice"
-
-notify-send -h string:bgcolor:#a3be8c "Audio switched to $choice!"
+ 
+# Move all active sink-inputs to a given sink
+move_all_inputs() {
+    local sink="$1"
+    pactl list short sink-inputs | awk '{print $1}' | while read -r id; do
+        pactl move-sink-input "$id" "$sink"
+    done
+}
+ 
+case "$choice" in
+    "🔉 Speakers"*)
+        pactl set-default-sink "$SINK_ANALOG"
+        pactl set-sink-port "$SINK_ANALOG" analog-output-speaker
+        move_all_inputs "$SINK_ANALOG"
+        notify-send -h string:bgcolor:#a3be8c "🔉 Speakers (built-in)"
+        ;;
+    "🎧 Headphones"*)
+        pactl set-default-sink "$SINK_ANALOG"
+        pactl set-sink-port "$SINK_ANALOG" analog-output-headphones
+        move_all_inputs "$SINK_ANALOG"
+        notify-send -h string:bgcolor:#a3be8c "🎧 Headphones (analog)"
+        ;;
+    "🖥️"*)
+        pactl set-default-sink "$SINK_HDMI"
+        move_all_inputs "$SINK_HDMI"
+        notify-send -h string:bgcolor:#a3be8c "🖥️  HDMI output"
+        ;;
+    "🎤"*)
+        pactl set-source-port "$SOURCE" analog-input-internal-mic
+        notify-send -h string:bgcolor:#88c0d0 "🎤 Mic: Internal"
+        ;;
+    "🎙️"*)
+        pactl set-source-port "$SOURCE" analog-input-headset-mic
+        notify-send -h string:bgcolor:#88c0d0 "🎙️  Mic: Headset"
+        ;;
+esac
