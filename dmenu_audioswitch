@@ -14,15 +14,22 @@ current_mic_port=$(pactl list sources | awk '
     /Name:/{name=$2}
     name=="'"$SOURCE"'" && /Active Port:/{print $3}
 ')
+current_mic_mute=$(pactl list sources | awk '
+    /Name:/{name=$2}
+    name=="'"$SOURCE"'" && /Mute:/{print $2}
+')
  
 mark() { [ "$1" = "$2" ] && echo " ✓" || echo ""; }
  
+[ "$current_mic_mute" = "yes" ] && mute_label=" Mic: Unmute ✓" || mute_label=" Mic: Mute"
+ 
 options=(
-    "🔉 Speakers (built-in)$(  mark "$current_sink/$current_sink_port" "$SINK_ANALOG/analog-output-speaker")"
-    "🎧 Headphones (analog)$(   mark "$current_sink/$current_sink_port" "$SINK_ANALOG/analog-output-headphones")"
-    "🖥️  HDMI$(                 mark "$current_sink" "$SINK_HDMI")"
-    "🎤 Mic: Internal$(         mark "$current_mic_port" "analog-input-internal-mic")"
-    "🎙️  Mic: Headset$(         mark "$current_mic_port" "analog-input-headset-mic")"
+    "$mute_label"
+    "🔉 Speakers (built-in)$( mark "$current_sink/$current_sink_port" "$SINK_ANALOG/analog-output-speaker")"
+    "🎧 Headphones (analog)$(mark "$current_sink/$current_sink_port" "$SINK_ANALOG/analog-output-headphones")"
+    "🖥️ HDMI$(mark "$current_sink" "$SINK_HDMI")"
+    "  Mic: Internal$(mark "$current_mic_port" "analog-input-internal-mic")"
+    "🎙️ Mic: Headset$(mark "$current_mic_port" "analog-input-headset-mic")"
 )
  
 choice=$(printf '%s\n' "${options[@]}" | dmenu -c -l 10 -i -p "Audio:")
@@ -54,12 +61,20 @@ case "$choice" in
         move_all_inputs "$SINK_HDMI"
         notify-send -h string:bgcolor:#a3be8c "🖥️  HDMI output"
         ;;
-    "🎤"*)
+    ""*)
         pactl set-source-port "$SOURCE" analog-input-internal-mic
-        notify-send -h string:bgcolor:#88c0d0 "🎤 Mic: Internal"
+        notify-send -h string:bgcolor:#88c0d0 " Mic: Internal"
         ;;
     "🎙️"*)
         pactl set-source-port "$SOURCE" analog-input-headset-mic
         notify-send -h string:bgcolor:#88c0d0 "🎙️  Mic: Headset"
+        ;;
+    ""*)
+        pactl set-source-mute "$SOURCE" toggle
+        if [ "$current_mic_mute" = "yes" ]; then
+            notify-send -h string:bgcolor:#88c0d0 " Mic: Unmuted"
+        else
+            notify-send -h string:bgcolor:#bf616a "  Mic: Muted"
+        fi
         ;;
 esac
