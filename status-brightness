@@ -4,12 +4,12 @@ SCT_TEMP=4000         # temperature for night mode
 SCT_STATE_FILE="/tmp/sct_state"  # file to store current state
 
 print_brightness(){
- # Get current brightness
+    # Get current brightness
     BRIGHTNESS=$(brightnessctl get)
     MAX=$(brightnessctl max)
     PERCENT=$((BRIGHTNESS * 100 / MAX))
 
-# Icon depending on brightness level
+    # Icon depending on brightness level
     if [ "$PERCENT" -le 25 ]; then
         ICON="󰃞"
     elif [ "$PERCENT" -le 50 ]; then
@@ -42,5 +42,8 @@ case "$BLOCK_BUTTON" in
 #    3) notify-send "Brightness: $(brightnessctl get) / $(brightnessctl max)" ;;
 esac
 
-#pkill -RTMIN+5 dwmblocks
+if [ -n "$BLOCK_BUTTON" ]; then
+    setsid -f sh -c "sleep 0.02 && pkill -RTMIN+5 dwmblocks"
+fi
+
 print_brightness
