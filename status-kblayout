@@ -1,11 +1,37 @@
-#!/bin/sh
+#!/bin/bash
 
-layouts=(EN UK RU)
 STATEFILE="/tmp/kblayout_state"
+layouts=(EN UK RU)
 
+# Handle mouse scroll and click actions from dwmblocks-async
+if [ -n "$BLOCK_BUTTON" ]; then
+    if [ ! -f "$STATEFILE" ]; then
+        echo 0 > "$STATEFILE"
+    fi
+    CURRENT=$(cat "$STATEFILE")
+
+    if [ "$BLOCK_BUTTON" = "5" ]; then
+        # Scroll down: cycle backwards
+        NEXT=$(( (CURRENT + 2) % 3 ))
+        case "$NEXT" in
+            0) setxkbmap us ;;
+            1) setxkbmap ua ;;
+            2) setxkbmap ru ;;
+        esac
+        echo "$NEXT" > "$STATEFILE"
+    else
+        # Scroll up or click: cycle forwards using the standalone script
+        toggle-kb.sh
+    fi
+
+    # Signal dwmblocks to refresh the status bar
+    pkill -RTMIN+6 dwmblocks
+fi
+
+# Output current layout to the status bar
 if [ ! -f "$STATEFILE" ]; then
-  echo "EN"
-  exit
+    echo "EN"
+    exit 0
 fi
 
 current=$(cat "$STATEFILE")
