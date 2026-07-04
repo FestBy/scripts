@@ -3,22 +3,26 @@
 SINK_ANALOG="alsa_output.pci-0000_05_00.6.analog-stereo"
 SINK_HDMI="alsa_output.pci-0000_05_00.1.hdmi-stereo"
 SOURCE="alsa_input.pci-0000_05_00.6.analog-stereo"
- 
+BLUETOOTH="bluez_output.00_02_3C_D4_B7_CD.1"
+
 # Detect current sink and ports
 current_sink=$(pactl info | awk '/Default Sink:/{print $3}')
-current_sink_port=$(pactl list sinks | awk '
-    /Name:/{name=$2}
-    name=="'"$SINK_ANALOG"'" && /Active Port:/{print $3}
+current_sink_port=$(pactl list sinks | awk -v target="$current_sink" '
+    NF && $1 == "Name:" { found = ($2 == target) }
+    found && $1 == "Active" && $2 == "Port:" { print $3; exit }
 ')
-current_mic_port=$(pactl list sources | awk '
-    /Name:/{name=$2}
-    name=="'"$SOURCE"'" && /Active Port:/{print $3}
+
+current_mic_port=$(pactl list sources | awk -v target="$SOURCE" '
+    NF && $1 == "Name:" { found = ($2 == target) }
+    found && $1 == "Active" && $2 == "Port:" { print $3; exit }
 ')
-current_mic_mute=$(pactl list sources | awk '
-    /Name:/{name=$2}
-    name=="'"$SOURCE"'" && /Mute:/{print $2}
+
+current_mic_mute=$(pactl list sources | awk -v target="$SOURCE" '
+    NF && $1 == "Name:" { found = ($2 == target) }
+    found && $1 == "Mute:" { print $2; exit }
 ')
- 
+
+
 mark() { [ "$1" = "$2" ] && echo " ✓" || echo ""; }
  
 [ "$current_mic_mute" = "yes" ] && mute_label=" Mic: Unmute ✓" || mute_label=" Mic: Mute"
@@ -27,6 +31,7 @@ options=(
     "$mute_label"
     "🔉 Speakers (built-in)$( mark "$current_sink/$current_sink_port" "$SINK_ANALOG/analog-output-speaker")"
     "🎧 Headphones (analog)$(mark "$current_sink/$current_sink_port" "$SINK_ANALOG/analog-output-headphones")"
+    " Speakers (bluetooth)$(mark "$current_sink/$current_sink_port" "$BLUETOOTH/speaker-output")"
     "🖥️ HDMI$(mark "$current_sink" "$SINK_HDMI")"
     "  Mic: Internal$(mark "$current_mic_port" "analog-input-internal-mic")"
     "🎙️ Mic: Headset$(mark "$current_mic_port" "analog-input-headset-mic")"
@@ -39,7 +44,7 @@ choice=$(printf '%s\n' "${options[@]}" | dmenu -c -l 10 -i -p "Audio:")
 move_all_inputs() {
     local sink="$1"
     pactl list short sink-inputs | awk '{print $1}' | while read -r id; do
-        pactl move-sink-input "$id" "$sink"
+        pactl move-sink-input "$id" "$sink" 2>/dev/null
     done
 }
  
@@ -55,6 +60,12 @@ case "$choice" in
         pactl set-sink-port "$SINK_ANALOG" analog-output-headphones
         move_all_inputs "$SINK_ANALOG"
         notify-send -h string:bgcolor:#a3be8c "🎧 Headphones (analog)"
+        ;;
+    " Speakers"*)
+        pactl set-default-sink "$BLUETOOTH"
+        pactl set-sink-port "$BLUETOOTH" speaker-output
+        move_all_inputs "$BLUETOOTH"
+        notify-send -h string:bgcolor:#a3be8c " Speakers (bluetooth)"
         ;;
     "🖥️"*)
         pactl set-default-sink "$SINK_HDMI"
